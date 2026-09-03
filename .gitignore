@@ -1,0 +1,30 @@
+# ---------------------------------------------------------------------------
+# Secrets. Nothing in here may ever be committed.
+# ---------------------------------------------------------------------------
+.env.qa.local
+.env.qa.*.local
+*.pem
+
+# Playwright authenticated session state (contains a live auth cookie)
+tests/fixtures/.auth/
+
+# Seed output containing generated row ids
+tests/fixtures/seed-manifest.json
+
+# ---------------------------------------------------------------------------
+# Generated output
+# ---------------------------------------------------------------------------
+node_modules/
+qa-artifacts/
+.qa-build/
+.workspaces/
+playwright-report/
+test-results/
+blob-report/
+.playwright/
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+*.tsbuildinfo

@@ -1,0 +1,35 @@
+{
+  "name": "crm-qa",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "External QA harness for the CRM application (crm_frontend + crm_backend).",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "qa:install": "playwright install chromium",
+    "qa:guard-check": "node scripts/guard-check.ts",
+    "qa:verify-hygiene": "node scripts/verify-hygiene.mjs",
+    "qa:db:reset": "node scripts/qa-db.ts reset",
+    "qa:db:schema": "node scripts/qa-db.ts schema",
+    "qa:db:seed": "node scripts/qa-db.ts seed",
+    "qa:db:setup": "node scripts/qa-db.ts setup",
+    "qa:db:reseed": "node scripts/qa-db.ts reseed",
+    "qa:prepare": "node scripts/prepare-frontend.mjs",
+    "qa:build": "node scripts/build-frontend.mjs",
+    "test:e2e": "playwright test",
+    "test:qa": "npm run qa:guard-check && npm run qa:db:setup && npm run qa:prepare && npm run qa:build && npm run test:e2e",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.0.0",
+    "@types/pg": "^8.15.0",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.0",
+    "pg": "^8.16.0",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3"
+  }
+}
