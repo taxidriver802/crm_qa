@@ -32,6 +32,11 @@ export const SCHEMA_FILES = Object.freeze([
   "patch_phase13_automation.sql",
   "patch_phase13_portal.sql",
   "patch_phase14_events.sql",
+  "patch_phase15_status_aging.sql",
+  "patch_phase16_communication.sql",
+  "patch_phase17_quotes_photos.sql",
+  "patch_phase18_acquisition_portal.sql",
+  "patch_phase19_appointments_workload.sql",
 ]);
 
 function sqlDir(): string {
