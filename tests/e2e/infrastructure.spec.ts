@@ -11,7 +11,7 @@ import path from "node:path";
 import pg from "pg";
 import { test, expect } from "../fixtures/test.ts";
 import { qaEnv } from "../../config/env.ts";
-import { AUTH_COOKIE_NAME, PROTECTED_DATABASES, QA_NOW } from "../../config/constants.ts";
+import { AUTH_COOKIE_NAME, PROTECTED_DATABASES, QA_NOW, dashboardGreeting } from "../../config/constants.ts";
 import { assertSafeQaTarget, currentTarget, UnsafeQaTargetError } from "../../db/admin.ts";
 import { VIEWPORTS } from "../../config/viewports.ts";
 import { waitForAppReady } from "../utils/app-ready.ts";
@@ -105,7 +105,7 @@ test.describe("infrastructure", () => {
     // Reaching the dashboard at all proves the session works: proxy.js
     // redirects unauthenticated requests for /dashboard to /login.
     expect(new URL(page.url()).pathname).toBe("/dashboard");
-    await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: dashboardGreeting() })).toBeVisible();
   });
 
   test("criterion 8: this viewport project executes", async ({ page, viewportInfo }) => {

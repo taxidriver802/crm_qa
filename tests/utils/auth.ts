@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { AUTH_COOKIE_NAME, PINNED_LOCAL_STORAGE } from "../../config/constants.ts";
+import { AUTH_COOKIE_NAME, PINNED_LOCAL_STORAGE, dashboardGreeting } from "../../config/constants.ts";
 import { qaEnv } from "../../config/env.ts";
 
 export interface Credentials {
@@ -48,7 +48,7 @@ export async function login(page: Page, credentials: Credentials = OWNER): Promi
   await submitLoginForm(page, credentials);
 
   await page.waitForURL(/\/dashboard(\?.*)?$/, { timeout: 30_000 });
-  await expect(page.getByRole("heading", { level: 1, name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: dashboardGreeting() })).toBeVisible();
 }
 
 /**

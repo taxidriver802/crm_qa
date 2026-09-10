@@ -9,6 +9,7 @@
  */
 
 import type { ViewportName } from "./viewports.ts";
+import { dashboardGreeting } from "./constants.ts";
 
 export type RouteKind =
   | "dashboard"
@@ -72,7 +73,7 @@ export const TIER_1_ROUTES: readonly QaRoute[] = Object.freeze([
     tier: 1,
     shell: "app",
     authRequired: true,
-    heading: "Dashboard",
+    heading: dashboardGreeting(),
     source: "src/app/dashboard/page.js",
   },
   {

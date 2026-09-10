@@ -67,6 +67,20 @@ export const PINNED_LOCAL_STORAGE: Record<string, string> = {
 /** The auth cookie set by the backend on successful login. */
 export const AUTH_COOKIE_NAME = "access_token";
 
+/** Seeded owner first name from db/seed.ts — used by the dashboard greeting. */
+export const QA_OWNER_FIRST_NAME = "Quinn";
+
+/**
+ * Mirrors crm_frontend greetingFor() against the pinned QA clock.
+ * Dashboard AppShell title is this string, not "Dashboard".
+ */
+export function dashboardGreeting(firstName = QA_OWNER_FIRST_NAME): string {
+  const hour = QA_NOW.getHours();
+  const hello =
+    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  return firstName ? `${hello}, ${firstName}` : hello;
+}
+
 /**
  * Database names the harness must never touch, at any cost.
  * Enforced by assertSafeQaTarget() in db/admin.ts.
