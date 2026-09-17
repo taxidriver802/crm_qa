@@ -16,6 +16,7 @@
     "qa:db:seed": "node scripts/qa-db.ts seed",
     "qa:db:setup": "node scripts/qa-db.ts setup",
     "qa:db:reseed": "node scripts/qa-db.ts reseed",
+    "qa:db:verify": "node scripts/qa-db.ts verify",
     "qa:prepare": "node scripts/prepare-frontend.mjs",
     "qa:build": "node scripts/build-frontend.mjs",
     "test:e2e": "playwright test",
