@@ -5,13 +5,25 @@ External automated QA harness for the CRM. Drives the real `crm_frontend` and
 without modifying either application repository, exposing the app publicly, or
 disturbing a running development environment.
 
-**Phase 2 (this milestone): Playwright foundation.** Database lifecycle,
-deterministic seed, real authentication with session reuse, server
-orchestration, and route smoke coverage across four viewports.
-Accessibility (Phase 3), visual regression (Phase 4), Lighthouse (Phase 5) and
-CI (Phase 6) are not implemented yet.
+This is not a unit-test package and it does not replace backend Jest. It is a
+Playwright harness that boots both apps on QA-only ports.
+
+**Current coverage:** database lifecycle, deterministic seed, real
+authentication with session reuse, server orchestration, and route smoke
+across four viewports. Accessibility, visual regression, Lighthouse, and CI
+are possible later work — not implemented.
+
+Manual walkthroughs (feel, empty states, lead → job flows) live in the backend
+repo, not here:
+
+- [`../crm_backend/docs/guide/dev-testing-guide.md`](../crm_backend/docs/guide/dev-testing-guide.md)
+- [`../crm_backend/docs/guide/realtor_testing_guide.md`](../crm_backend/docs/guide/realtor_testing_guide.md)
 
 ## Quick start
+
+Sibling checkouts of `crm_frontend` and `crm_backend` are required (defaults
+`../crm_frontend` and `../crm_backend`). Postgres must be able to create a
+`crm_qa` database via the admin URL.
 
 ```bash
 cp .env.qa.example .env.qa.local   # then fill in real values
@@ -30,6 +42,7 @@ Three properties keep a QA run from touching your development setup.
 **Separate ports.** QA binds 3100 (frontend) and 4100 (backend). `config/env.ts`
 refuses to start if either is configured as 3000 or 4000, and Playwright uses
 `reuseExistingServer: false` so it never adopts a server it did not start.
+Local development stays on **3000 / 4000**.
 
 **Separate database.** QA uses `crm_qa`, never `crm_dev`. Every destructive
 statement routes through `db/admin.ts`, which validates the target five ways
@@ -41,6 +54,19 @@ same `.next`. So `scripts/prepare-frontend.mjs` stages a copy of the frontend
 into `.qa-build/frontend/` (excluding `node_modules`, `.next`, `.git`, `.env*`)
 and builds there. `crm_frontend/.next` is never written — the smoke suite
 asserts this by comparing `BUILD_ID`s.
+
+## How this relates to the other repos
+
+| Concern | Owner |
+| --- | --- |
+| Schema SQL | `crm_backend/sql/` — this harness applies those files in the same order as `crm_backend/test/helpers/setup.ts`. `verifyNoSchemaDrift()` fails if a new patch file appears and is not listed. |
+| Seed data | **This repo** (`db/seed-data.ts`), not `db:seed-demo` / `db:seed-walkthrough`. Fixture binaries in `fixtures/uploads/` are copied into `crm_backend/uploads/`. |
+| Frontend build | Staged copy of `crm_frontend`; env `NEXT_PUBLIC_API_BASE_URL=/api` and `API_INTERNAL_BASE_URL` pointing at the QA backend. |
+| API tests | Stay in `crm_backend` (`npm test`). |
+
+`NODE_ENV=test` on the QA backend skips the two `setInterval` jobs in
+`crm_backend/src/app.ts` and loads the backend’s `.env.test` path logic so a
+developer `crm_dev` URL is never read. SMTP is left unconfigured.
 
 ## Database safety
 
@@ -62,8 +88,9 @@ any is accepted. It runs first in `test:qa`, before any database work.
 
 ## Determinism
 
-Visual regression in Phase 4 needs pixel-identical input, which requires
-removing every source of run-to-run variation:
+Seeded timestamps, relative labels, and theme chrome are pinned so a later
+visual suite could compare pixels. The same machinery already keeps smoke
+runs stable:
 
 - **Fixed seed anchor.** All seeded timestamps derive from `QA_SEED_ANCHOR`
   (`2026-03-02T09:00Z`), so rendered dates never drift. This is the primary
@@ -74,10 +101,7 @@ removing every source of run-to-run variation:
   the seed supplies explicit ids.
 - **Pinned `localStorage`.** Theme, palette, sidebar and list view modes are
   set before first paint rather than inherited.
-- **No background jobs.** The backend runs with `NODE_ENV=test`, which skips
-  the two `setInterval` jobs in `crm_backend/src/app.ts` that would otherwise
-  mutate seeded rows mid-run, and leaves SMTP unconfigured so nothing can send
-  real email.
+- **No background jobs.** See above.
 
 Verified by resetting and reseeding twice and comparing an MD5 over all seeded
 content: the digests match.
@@ -114,6 +138,38 @@ fixtures/uploads/   deterministic file-upload fixtures
 qa-artifacts/       generated reports (gitignored)
 .qa-build/          staged frontend copy (gitignored)
 ```
+
+## What is tested today
+
+Specs in `tests/e2e/`:
+
+- **infrastructure** — guards, seed completeness, backend pointed at `crm_qa`,
+  staged build, ports
+- **auth** — real login, bad credentials, logout, and the actual (uneven)
+  route-guard behaviour in `crm_frontend/src/proxy.js`
+- **smoke-routes** — each Tier 1 authenticated route, at every viewport:
+  loads, expected heading, expected nav chrome, no page errors, no horizontal
+  overflow; plus seeded leads visible on the list
+
+**Tier 1** (`config/routes.ts`): login, dashboard, leads list / detail / new,
+jobs list / detail, tasks, invoices, files, users.
+
+Auth is exercised as the owner. `QA_AGENT_*` is reserved for a later RBAC pass
+and is unused.
+
+## What is not tested
+
+**Tier 2** is catalogued in `config/routes.ts` but has no specs yet: remaining
+new/edit forms, task / invoice / estimate details, reports, automation,
+integrations, public portal and public estimate.
+
+Frontend routes not even in that catalog today: `/estimates/templates`,
+`/public/intake/[token]`.
+
+Possible later work, not scheduled here: accessibility, visual regression,
+Lighthouse, CI, agent-role coverage, feature-level flows (create lead, send
+estimate, …). Breadth-over-depth is intentional — this suite proves the
+harness can reach and render the app.
 
 ## Viewports
 
