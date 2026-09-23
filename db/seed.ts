@@ -29,6 +29,7 @@ import {
   NOTES,
   NOTIFICATIONS,
   QA_AGENT_ID,
+  QA_COMPANY_ID,
   QA_OWNER_ID,
   SAVED_VIEWS,
   TASKS,
@@ -91,19 +92,30 @@ async function insertAll(
   ownerHash: string,
   agentHash: string | null,
 ): Promise<SeedManifest> {
+  // --- company ------------------------------------------------------------
+  // Schema backfill already inserts this id. Seed it explicitly so users
+  // land on a known tenant even if the default row was truncated.
+  await client.query(
+    `INSERT INTO companies (id, name, slug, palette_id)
+     VALUES ($1, 'Rooftop Realty', 'rooftop', 'rooftop')
+     ON CONFLICT (id) DO NOTHING`,
+    [QA_COMPANY_ID],
+  );
+
   // --- users --------------------------------------------------------------
   // Fixed UUIDs, so every downstream foreign key is stable run to run.
   await client.query(
     `INSERT INTO users
        (id, first_name, last_name, email, password_hash, role, status,
-        password_set_at, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 'owner', 'active', $6, $6, $6)`,
+        company_id, password_set_at, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, 'owner', 'active', $6, $7, $7, $7)`,
     [
       QA_OWNER_ID,
       "Quinn",
       "Archer",
       qaEnv.ownerEmail,
       ownerHash,
+      QA_COMPANY_ID,
       anchorPlusDays(-30),
     ],
   );
@@ -112,9 +124,17 @@ async function insertAll(
     await client.query(
       `INSERT INTO users
          (id, first_name, last_name, email, password_hash, role, status,
-          password_set_at, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, 'agent', 'active', $6, $6, $6)`,
-      [QA_AGENT_ID, "Avery", "Sloan", qaEnv.agentEmail, agentHash, anchorPlusDays(-29)],
+          company_id, password_set_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 'agent', 'active', $6, $7, $7, $7)`,
+      [
+        QA_AGENT_ID,
+        "Avery",
+        "Sloan",
+        qaEnv.agentEmail,
+        agentHash,
+        QA_COMPANY_ID,
+        anchorPlusDays(-29),
+      ],
     );
   }
 
@@ -485,6 +505,7 @@ async function insertAll(
       ownerEmail: qaEnv.ownerEmail,
       agentId: agentHash ? QA_AGENT_ID : null,
       agentEmail: agentHash ? qaEnv.agentEmail : null,
+      companyId: QA_COMPANY_ID,
     },
     leads: leadIds,
     jobs: jobIds,

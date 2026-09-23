@@ -24,6 +24,7 @@ export interface SeedManifest {
     ownerEmail: string;
     agentId: string | null;
     agentEmail: string | null;
+    companyId: string;
   };
   leads: Record<string, number>;
   jobs: Record<string, number>;

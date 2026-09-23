@@ -18,7 +18,8 @@
 
 import { anchorPlusDays } from "../config/constants.ts";
 
-/** Fixed user ids so every foreign key is stable across runs. */
+/** Fixed ids so every foreign key is stable across runs. */
+export const QA_COMPANY_ID = "c0000000-0000-4000-8000-000000000001";
 export const QA_OWNER_ID = "a0000000-0000-4000-8000-000000000001";
 export const QA_AGENT_ID = "a0000000-0000-4000-8000-000000000002";
 
