@@ -21,17 +21,21 @@ import { qaEnv } from "../../config/env.ts";
 export interface Credentials {
   email: string;
   password: string;
+  slug?: string;
 }
 
 export const OWNER: Credentials = {
   email: qaEnv.ownerEmail,
   password: qaEnv.ownerPassword,
+  slug: "rooftop",
 };
 
 /** Fills and submits the login form. Does not assert the outcome. */
 export async function submitLoginForm(page: Page, credentials: Credentials): Promise<void> {
+  await page.getByLabel("Company slug").fill(credentials.slug ?? "rooftop");
   await page.getByLabel("Email").fill(credentials.email);
   await page.getByLabel("Password").fill(credentials.password);
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeEnabled();
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 

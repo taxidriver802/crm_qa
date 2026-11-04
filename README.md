@@ -189,6 +189,8 @@ a `lg:hidden` bottom nav.
 (`≥ md`) but navigation is still mobile (`< lg`). That combination exists at no
 other width.
 
+`tests/e2e/pwa.spec.ts` runs on `phone-390` and `desktop-1440` only, with service workers allowed. Real-device install, iOS session persistence, and notched safe areas are in [docs/pwa-manual.md](docs/pwa-manual.md).
+
 ## Secrets
 
 All QA secrets live in `.env.qa.local`, which is gitignored and written `0600`.

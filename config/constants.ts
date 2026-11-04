@@ -55,6 +55,9 @@ export function nowPlusDays(days: number, hour = 12): Date {
  *   crm_frontend/src/app/leads/page.js        -> "leads:view-mode"
  *   crm_frontend/src/app/tasks/page.js        -> "tasks:view-mode"
  *   next-themes default storage key           -> "theme"
+ *
+ * crm-company-slug is owned by the login form. It is not pinned here so
+ * auth tests fill the slug field instead of inheriting a remembered tag.
  */
 export const PINNED_LOCAL_STORAGE: Record<string, string> = {
   theme: "light",
