@@ -9,9 +9,11 @@ This is not a unit-test package and it does not replace backend Jest. It is a
 Playwright harness that boots both apps on QA-only ports.
 
 **Current coverage:** database lifecycle, deterministic seed, real
-authentication with session reuse, server orchestration, and route smoke
-across four viewports. Accessibility, visual regression, Lighthouse, and CI
-are possible later work — not implemented.
+authentication with session reuse, server orchestration, route smoke
+across four viewports, and the job lifecycle / money ledger (job page,
+invoice payments, portal, public invoice, and one end-to-end flow from client
+approval to paid and closed). Accessibility, visual regression, Lighthouse,
+and CI are possible later work — not implemented.
 
 Manual walkthroughs (feel, empty states, lead → job flows) live in the backend
 repo, not here:
@@ -150,12 +152,28 @@ Specs in `tests/e2e/`:
 - **smoke-routes** — each Tier 1 authenticated route, at every viewport:
   loads, expected heading, expected nav chrome, no page errors, no horizontal
   overflow; plus seeded leads visible on the list
+- **job-lifecycle** — at every viewport, read-only against the seeded
+  billing-phase job (Helen Brooks, "Gutter guard install": deposit paid,
+  final invoice with $960 due): job page lifecycle + money + next step, jobs
+  phase filter, invoice ledger and line lock, dashboard "Owed to you",
+  customer portal stage/balance with drafts hidden, and the public invoice
+  link, each with an overflow check. On `desktop-1440` only, a mutating flow
+  that creates its own lead/job/estimate through the API and drives client
+  approval → Sold → deposit paid → production → final invoice less deposit →
+  close refused while a draft exists → final payment → job closes itself.
+  Portal and share tokens are minted per test and never written to the
+  manifest.
 
 **Tier 1** (`config/routes.ts`): login, dashboard, leads list / detail / new,
 jobs list / detail, tasks, invoices, files, users.
 
 Auth is exercised as the owner. `QA_AGENT_*` is reserved for a later RBAC pass
 and is unused.
+
+Mutation rule: the suite runs serially on one database across four
+projects, so a spec that changes data must either touch only data it created
+itself (as `job-lifecycle`'s end-to-end flow does) or run once on a single
+project. Seeded records stay as seeded for every viewport.
 
 ## What is not tested
 
@@ -164,7 +182,8 @@ new/edit forms, task / invoice / estimate details, reports, automation,
 integrations, public portal and public estimate.
 
 Frontend routes not even in that catalog today: `/estimates/templates`,
-`/public/intake/[token]`.
+`/public/intake/[token]`. (`/public/invoice/[token]` is catalogued and covered
+by `job-lifecycle`.)
 
 Possible later work, not scheduled here: accessibility, visual regression,
 Lighthouse, CI, agent-role coverage, feature-level flows (create lead, send
