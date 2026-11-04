@@ -203,6 +203,7 @@ export const TIER_2_ROUTES: readonly QaRoute[] = Object.freeze([
   { id: "integrations-quickbooks", path: "/integrations/quickbooks", label: "QuickBooks", kind: "settings-admin", tier: 2, shell: "app", authRequired: true, source: "src/app/integrations/quickbooks/page.js" },
   { id: "public-portal", path: "/public/portal/{portalToken}", label: "Customer portal", kind: "public", tier: 2, shell: "public", authRequired: false, source: "src/app/public/portal/[token]/page.js" },
   { id: "public-estimate", path: "/public/estimate/{estimateToken}", label: "Public estimate", kind: "public", tier: 2, shell: "public", authRequired: false, source: "src/app/public/estimate/[token]/page.js" },
+  { id: "public-invoice", path: "/public/invoice/{invoiceToken}", label: "Public invoice", kind: "public", tier: 2, shell: "public", authRequired: false, source: "src/app/public/invoice/[token]/page.js", notes: "Phase 23. Covered by tests/e2e/job-lifecycle.spec.ts (token minted per test, never stored in the manifest)." },
 ]);
 
 export const ALL_ROUTES: readonly QaRoute[] = Object.freeze([

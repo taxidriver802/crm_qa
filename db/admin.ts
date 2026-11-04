@@ -206,6 +206,7 @@ export const TRUNCATE_TABLES = Object.freeze([
   "product_events",
   "portal_tokens",
   "automation_rules",
+  "invoice_payments",
   "invoice_line_items",
   "invoices",
   "estimate_line_items",

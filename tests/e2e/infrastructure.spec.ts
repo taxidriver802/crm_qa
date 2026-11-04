@@ -45,10 +45,10 @@ test.describe("infrastructure", () => {
     expect(manifest.users.ownerId).toBe("a0000000-0000-4000-8000-000000000001");
 
     expect(Object.keys(manifest.leads)).toHaveLength(6);
-    expect(Object.keys(manifest.jobs)).toHaveLength(4);
+    expect(Object.keys(manifest.jobs)).toHaveLength(5);
     expect(Object.keys(manifest.tasks)).toHaveLength(8);
-    expect(Object.keys(manifest.estimates)).toHaveLength(3);
-    expect(Object.keys(manifest.invoices)).toHaveLength(3);
+    expect(Object.keys(manifest.estimates)).toHaveLength(4);
+    expect(Object.keys(manifest.invoices)).toHaveLength(5);
     expect(Object.keys(manifest.files)).toHaveLength(4);
 
     // A barren lead must exist so empty states are reachable.

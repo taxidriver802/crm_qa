@@ -42,6 +42,25 @@ function round2(value: number): number {
   return Math.round(value * 100) / 100;
 }
 
+/** Statuses that mean the client said yes (crm_backend jobLifecycle WON_STATUSES). */
+const WON = new Set(["Sold", "Work Scheduled", "In Progress", "Work Complete", "Closed"]);
+
+/**
+ * Lifecycle milestones for a seeded job, derived from its status so a job
+ * listed as Work Complete really was sold and completed, on fixed dates.
+ */
+function milestonesFor(status: string, createdDayOffset: number) {
+  return {
+    sold_at: WON.has(status) ? anchorPlusDays(createdDayOffset + 7) : null,
+    work_completed_at:
+      status === "Work Complete" || status === "Closed"
+        ? anchorPlusDays(createdDayOffset + 9)
+        : null,
+    closed_at: status === "Closed" ? anchorPlusDays(createdDayOffset + 10) : null,
+    lost_at: status === "Lost" ? anchorPlusDays(createdDayOffset + 5) : null,
+  };
+}
+
 /** Copies fixture binaries into the backend's uploads directory. */
 function installUploadFixtures(): string[] {
   const source = path.join(qaEnv.qaRoot, "fixtures", "uploads");
@@ -170,11 +189,12 @@ async function insertAll(
   const jobIds: Record<string, number> = {};
   for (const job of JOBS) {
     const at = anchorPlusDays(job.createdDayOffset);
+    const milestones = milestonesFor(job.status, job.createdDayOffset);
     const result = await client.query<{ id: number }>(
       `INSERT INTO jobs
          (user_id, assigned_to, lead_id, title, description, status, address,
-          created_at, updated_at)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $7)
+          created_at, updated_at, sold_at, work_completed_at, closed_at, lost_at)
+       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -184,6 +204,10 @@ async function insertAll(
         job.status,
         job.address,
         at,
+        milestones.sold_at,
+        milestones.work_completed_at,
+        milestones.closed_at,
+        milestones.lost_at,
       ],
     );
     jobIds[job.key] = result.rows[0].id;
@@ -238,8 +262,8 @@ async function insertAll(
       `INSERT INTO estimates
          (user_id, job_id, title, status, subtotal, tax_total, discount_total,
           grand_total, notes, client_responded_at, client_response_note,
-          created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+          created_at, updated_at, approved_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -256,6 +280,9 @@ async function insertAll(
           : anchorPlusDays(estimate.respondedDayOffset),
         estimate.responseNote ?? null,
         at,
+        estimate.approvedDayOffset === undefined
+          ? null
+          : anchorPlusDays(estimate.approvedDayOffset),
       ],
     );
     const estimateId = result.rows[0].id;
@@ -287,21 +314,38 @@ async function insertAll(
 
   // --- invoices and line items --------------------------------------------
   const invoiceIds: Record<string, number> = {};
+  const invoiceGrand: Record<string, number> = {};
+  let paymentCount = 0;
   for (const invoice of INVOICES) {
     const subtotal = round2(
       invoice.lines.reduce((sum, line) => sum + line.quantity * line.unit_price, 0),
     );
     const taxable = Math.max(0, subtotal - invoice.discount);
     const tax = round2(taxable * invoice.taxRate);
-    const grand = round2(taxable + tax);
+    const priorBilled = invoice.priorBilledFromKey
+      ? invoiceGrand[invoice.priorBilledFromKey] ?? 0
+      : 0;
+    const grand = round2(Math.max(0, taxable + tax - priorBilled));
     const at = anchorPlusDays(invoice.createdDayOffset);
+    const payments = (invoice.payments ?? []).map((payment) => ({
+      ...payment,
+      amount: payment.amount < 0 ? grand : payment.amount,
+    }));
+    const amountPaid = round2(payments.reduce((sum, payment) => sum + payment.amount, 0));
+    if ((invoice.status === "Paid") !== (amountPaid >= grand && grand > 0)) {
+      throw new Error(
+        `Seed invoice ${invoice.invoice_number}: status ${invoice.status} disagrees with ` +
+          `its payments (${amountPaid} of ${grand}).`,
+      );
+    }
 
     const result = await client.query<{ id: number }>(
       `INSERT INTO invoices
          (user_id, job_id, estimate_id, invoice_number, status, subtotal,
           tax_total, discount_total, grand_total, due_date, paid_at, notes,
-          created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13)
+          created_at, updated_at, kind, prior_billed_total, amount_paid, sent_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13,
+               $14, $15, $16, $17)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -319,10 +363,35 @@ async function insertAll(
           : nowPlusDays(invoice.paidDayOffsetFromNow),
         invoice.notes,
         at,
+        invoice.kind ?? "standard",
+        priorBilled,
+        amountPaid,
+        invoice.status === "Draft" ? null : at,
       ],
     );
     const invoiceId = result.rows[0].id;
     invoiceIds[invoice.key] = invoiceId;
+    invoiceGrand[invoice.key] = grand;
+
+    for (const payment of payments) {
+      await client.query(
+        `INSERT INTO invoice_payments
+           (company_id, invoice_id, job_id, recorded_by_user_id, amount, method,
+            reference, received_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+        [
+          QA_COMPANY_ID,
+          invoiceId,
+          jobIds[invoice.jobKey],
+          QA_OWNER_ID,
+          payment.amount,
+          payment.method,
+          payment.reference,
+          anchorPlusDays(payment.receivedDayOffset),
+        ],
+      );
+      paymentCount += 1;
+    }
 
     let sortOrder = 0;
     for (const line of invoice.lines) {
@@ -345,7 +414,9 @@ async function insertAll(
       sortOrder += 1;
     }
   }
-  console.log(`[qa-seed] invoices: ${Object.keys(invoiceIds).length}`);
+  console.log(
+    `[qa-seed] invoices: ${Object.keys(invoiceIds).length} (${paymentCount} payments)`,
+  );
 
   // --- measurements -------------------------------------------------------
   let measurementOrder: Record<string, number> = {};
@@ -521,6 +592,10 @@ async function insertAll(
       taskId: taskIds["adjuster-meeting"],
       estimateId: estimateIds["webb-primary"],
       invoiceId: invoiceIds["webb-sent"],
+      // Phase 23: a job in billing with a deposit paid and a balance due.
+      billingJobId: jobIds["brooks-gutters"],
+      balanceInvoiceId: invoiceIds["brooks-gutters-final"],
+      approvedEstimateId: estimateIds["brooks-gutters-scope"],
     },
   };
 }

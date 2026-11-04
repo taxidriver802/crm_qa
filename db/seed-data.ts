@@ -24,13 +24,18 @@ export const QA_OWNER_ID = "a0000000-0000-4000-8000-000000000001";
 export const QA_AGENT_ID = "a0000000-0000-4000-8000-000000000002";
 
 export const LEAD_STATUSES = ["New", "Contacted", "Qualified", "Closed", "Inactive"] as const;
+/** crm_backend/src/lib/jobLifecycle.ts JOB_STATUSES (phase 23). */
 export const JOB_STATUSES = [
   "New",
   "Contacted",
   "Appointment Scheduled",
   "Proposal Sent",
-  "Closed Won",
-  "Closed Lost",
+  "Sold",
+  "Work Scheduled",
+  "In Progress",
+  "Work Complete",
+  "Closed",
+  "Lost",
 ] as const;
 
 export interface SeedLead {
@@ -171,7 +176,7 @@ export const JOBS: readonly SeedJob[] = Object.freeze([
     title: "Full tear-off and re-deck",
     description:
       "Two-layer tear-off, replace deteriorated decking, install ridge vent and new flashing throughout.",
-    status: "Closed Won",
+    status: "Closed",
     address: "7 Juniper Ct, Plymouth, MN 55447",
     createdDayOffset: 8,
   },
@@ -183,6 +188,20 @@ export const JOBS: readonly SeedJob[] = Object.freeze([
     status: "New",
     address: "305 Alder St, Minneapolis, MN 55408",
     createdDayOffset: 9,
+  },
+  /**
+   * Repeat customer, past the sale: approved, deposit paid, work done, final
+   * invoice partially paid. Exercises the billing phase, the money card and
+   * "collect the balance" without any test having to mutate it.
+   */
+  {
+    key: "brooks-gutters",
+    leadKey: "brooks",
+    title: "Gutter guard install",
+    description: "Micro-mesh gutter guards on all runs, plus two new downspouts on the garage.",
+    status: "Work Complete",
+    address: "7 Juniper Ct, Plymouth, MN 55447",
+    createdDayOffset: 10,
   },
 ]);
 
@@ -283,6 +302,8 @@ export interface SeedEstimate {
   jobKey: string;
   title: string;
   status: string;
+  /** Approval day (anchor offset) for Approved estimates. */
+  approvedDayOffset?: number;
   notes: string | null;
   taxRate: number;
   discount: number;
@@ -371,6 +392,7 @@ export const ESTIMATES: readonly SeedEstimate[] = Object.freeze([
     jobKey: "brooks-tearoff",
     title: "Full tear-off, re-deck and ventilation",
     status: "Approved",
+    approvedDayOffset: 14,
     notes: "Approved by homeowner. Converted to invoice.",
     taxRate: 0.07375,
     discount: 1200,
@@ -422,7 +444,43 @@ export const ESTIMATES: readonly SeedEstimate[] = Object.freeze([
       },
     ],
   },
+  {
+    key: "brooks-gutters-scope",
+    jobKey: "brooks-gutters",
+    title: "Gutter guards and downspouts",
+    status: "Approved",
+    approvedDayOffset: 17,
+    notes: "Repeat customer pricing.",
+    taxRate: 0,
+    discount: 0,
+    createdDayOffset: 16,
+    respondedDayOffset: 17,
+    responseNote: "Yes please, same crew as the roof.",
+    lines: [
+      {
+        name: "Micro-mesh gutter guards",
+        description: "140 linear feet",
+        quantity: 140,
+        unit_price: 17.5,
+        source: "manual",
+      },
+      {
+        name: "Downspouts",
+        description: "Two new garage downspouts",
+        quantity: 2,
+        unit_price: 175,
+        source: "manual",
+      },
+    ],
+  },
 ]);
+
+export interface SeedPayment {
+  amount: number;
+  method: "check" | "card" | "cash" | "ach" | "financing" | "other";
+  reference: string | null;
+  receivedDayOffset: number;
+}
 
 export interface SeedInvoiceLine {
   name: string;
@@ -437,6 +495,12 @@ export interface SeedInvoice {
   estimateKey: string | null;
   invoice_number: string;
   status: string;
+  /** standard | deposit | final (phase 23). Defaults to standard. */
+  kind?: "standard" | "deposit" | "final";
+  /** Deposit billed earlier on the same estimate; subtracted on a final. */
+  priorBilledFromKey?: string;
+  /** Ledger rows. Paid / Partially Paid invoices must carry them. */
+  payments?: readonly SeedPayment[];
   notes: string | null;
   taxRate: number;
   discount: number;
@@ -446,7 +510,11 @@ export interface SeedInvoice {
   lines: readonly SeedInvoiceLine[];
 }
 
-/** Three invoices so the list page renders Paid, Sent and Overdue together. */
+/**
+ * Invoices: Paid, Sent and Overdue on the original jobs, plus a deposit and a
+ * partially paid final invoice on the billing-phase job. A payment amount of
+ * -1 means "the invoice's full total".
+ */
 export const INVOICES: readonly SeedInvoice[] = Object.freeze([
   {
     key: "brooks-paid",
@@ -460,6 +528,7 @@ export const INVOICES: readonly SeedInvoice[] = Object.freeze([
     createdDayOffset: 15,
     dueDayOffsetFromNow: -12,
     paidDayOffsetFromNow: -14,
+    payments: [{ amount: -1, method: "check", reference: "2210", receivedDayOffset: 0 }],
     lines: [
       { name: "Tear-off, re-deck and ventilation", description: "Per approved estimate", quantity: 1, unit_price: 22600 },
       { name: "Permit fee", description: null, quantity: 1, unit_price: 285 },
@@ -490,6 +559,42 @@ export const INVOICES: readonly SeedInvoice[] = Object.freeze([
     createdDayOffset: 17,
     dueDayOffsetFromNow: -11,
     lines: [{ name: "Storm damage inspection and report", description: null, quantity: 1, unit_price: 450 }],
+  },
+  {
+    key: "brooks-gutters-deposit",
+    jobKey: "brooks-gutters",
+    estimateKey: "brooks-gutters-scope",
+    invoice_number: "INV-1004",
+    status: "Paid",
+    kind: "deposit",
+    notes: "Deposit due before work is scheduled.",
+    taxRate: 0,
+    discount: 0,
+    createdDayOffset: 18,
+    dueDayOffsetFromNow: null,
+    paidDayOffsetFromNow: -6,
+    lines: [{ name: "Deposit", description: "30% deposit on Gutter guards and downspouts", quantity: 1, unit_price: 840 }],
+    payments: [{ amount: -1, method: "card", reference: null, receivedDayOffset: 8 }],
+  },
+  {
+    key: "brooks-gutters-final",
+    jobKey: "brooks-gutters",
+    estimateKey: "brooks-gutters-scope",
+    invoice_number: "INV-1005",
+    status: "Partially Paid",
+    kind: "final",
+    priorBilledFromKey: "brooks-gutters-deposit",
+    notes: "Final invoice. Deposit applied.",
+    taxRate: 0,
+    discount: 0,
+    createdDayOffset: 20,
+    // No due date: "due on completion", so the backend clock never ages it.
+    dueDayOffsetFromNow: null,
+    lines: [
+      { name: "Micro-mesh gutter guards", description: "140 linear feet", quantity: 140, unit_price: 17.5 },
+      { name: "Downspouts", description: "Two new garage downspouts", quantity: 2, unit_price: 175 },
+    ],
+    payments: [{ amount: 1000, method: "check", reference: "3318", receivedDayOffset: 13 }],
   },
 ]);
 
@@ -557,7 +662,9 @@ export const ACTIVITY: readonly SeedActivity[] = Object.freeze([
   { jobKey: "webb-reroof", type: "JOB_STATUS_CHANGED", title: "Status changed", message: "Contacted to Proposal Sent", createdDayOffset: 11 },
   { jobKey: "whitfield-inspection", type: "JOB_CREATED", title: "Job created", message: "Created from lead Dana Whitfield.", createdDayOffset: 7 },
   { jobKey: "brooks-tearoff", type: "ESTIMATE_STATUS_CHANGED", title: "Estimate approved", message: "Homeowner approved the tear-off estimate.", createdDayOffset: 14 },
-  { jobKey: "brooks-tearoff", type: "JOB_STATUS_CHANGED", title: "Status changed", message: "Proposal Sent to Closed Won", createdDayOffset: 15 },
+  { jobKey: "brooks-tearoff", type: "JOB_STATUS_CHANGED", title: "Status changed", message: "Work Complete to Closed", createdDayOffset: 15 },
+  { jobKey: "brooks-gutters", type: "JOB_STATUS_CHANGED", title: "Status moved automatically", message: "Proposal Sent to Sold", createdDayOffset: 17 },
+  { jobKey: "brooks-gutters", type: "JOB_STATUS_CHANGED", title: "Status changed", message: "In Progress to Work Complete", createdDayOffset: 19 },
 ]);
 
 export interface SeedFile {
