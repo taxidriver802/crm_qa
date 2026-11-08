@@ -220,6 +220,7 @@ export const TRUNCATE_TABLES = Object.freeze([
   "supplier_orders",
   "supplier_accounts",
   "supplier_connections",
+  "user_preferences",
   "users",
 ]);
 

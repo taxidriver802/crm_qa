@@ -1,13 +1,15 @@
 /**
  * Navigation helpers for the CRM app shell.
  *
- * The shell renders different chrome by width (crm_frontend/src/components/app-shell.js):
- *   >= lg (1024px) : desktop sidebar, id="desktop-sidebar"
+ * The Workbench shell renders different chrome by width
+ * (crm_frontend/src/components/app-shell.js, components/shell/*):
+ *   >= lg (1024px) : the rail, id="desktop-sidebar", with Create, Search,
+ *                    the person's own ordered nav, Pinned, and the account menu
  *   <  lg          : header hamburger (aria-label "Open menu"/"Close menu")
- *                    plus a bottom nav with Home / Leads / Jobs / Tasks / Reports
+ *                    plus a bottom tab bar (nav aria-label "Primary") with the
+ *                    first four work items and a centred Create button
  *
- * Selectors here use the accessible names and the one stable id the app
- * already provides. Nothing is added to the application.
+ * Selectors here use accessible names and the stable ids the app provides.
  */
 
 import type { Page } from "@playwright/test";
@@ -27,9 +29,19 @@ export function mobileMenu(page: Page) {
   return page.locator(".mobile-menu");
 }
 
-/** The bottom tab bar, identified by its Home tab. */
+/** The bottom tab bar shown below lg. */
 export function bottomNav(page: Page) {
-  return page.locator("nav").filter({ has: page.getByRole("link", { name: "Home" }) });
+  return page.getByRole("navigation", { name: "Primary" });
+}
+
+/** The global Create button (rail on desktop, centre of the tab bar on phones). */
+export function createButton(page: Page) {
+  return page.getByRole("button", { name: /^Create/ }).filter({ visible: true }).first();
+}
+
+/** The record preview panel opened by ?peek=kind:id. */
+export function peekPanel(page: Page) {
+  return page.getByTestId("peek-panel");
 }
 
 export function notificationsButton(page: Page) {

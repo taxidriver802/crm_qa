@@ -29,6 +29,11 @@ async function apiJson(request: APIRequestContext, method: "get" | "post" | "pat
   return body;
 }
 
+/** Job records are tabbed (Overview, Work, Money, Files, Activity); the label carries a count. */
+async function openJobTab(page: Page, name: string) {
+  await page.getByRole("tablist", { name: "Job sections" }).getByRole("tab", { name: new RegExp(`^${name}`) }).click();
+}
+
 async function expectNoOverflow(page: Page, label: string) {
   expect(await horizontalOverflow(page), `${label} overflows horizontally`).toBe(0);
 }
@@ -49,6 +54,8 @@ test.describe("job lifecycle — seeded billing job", () => {
     await expect(nextStep).toContainText("Collect $960.00 balance");
     await expect(nextStep.getByRole("link", { name: "Record payment" })).toBeVisible();
 
+    await openJobTab(page, "Money");
+    await expect(page).toHaveURL(/[?&]tab=money/);
     await expect(page.getByTestId("money-contract")).toContainText("$2,800.00");
     await expect(page.getByTestId("money-balance")).toContainText("$960.00");
     await expect(page.getByText("INV-1004").first()).toBeVisible();
@@ -204,6 +211,9 @@ test.describe("job lifecycle — end to end", () => {
     await waitForAppReady(page);
     await expect(page.getByRole("button", { name: "Sold", pressed: true })).toBeVisible();
     await expect(page.getByTestId("job-next-step")).toContainText("Request a deposit");
+    // The next step's own button takes you to the Money tab.
+    await page.getByTestId("job-next-step").getByRole("button", { name: "Bill deposit" }).click();
+    await expect(page.getByRole("tab", { name: /^Money/, selected: true })).toBeVisible();
     await expect(page.getByTestId("money-contract")).toContainText("$5,000.00");
 
     // --- bill and collect the deposit --------------------------------------
@@ -255,6 +265,7 @@ test.describe("job lifecycle — end to end", () => {
     await waitForAppReady(page);
     await expect(page.getByRole("button", { name: "Closed", pressed: true })).toBeVisible();
     await expect(page.getByTestId("job-next-step")).toHaveCount(0);
+    await openJobTab(page, "Money");
     await expect(page.getByTestId("money-balance")).toContainText("$0.00");
   });
 });
