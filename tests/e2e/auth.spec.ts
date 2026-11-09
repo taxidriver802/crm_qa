@@ -16,19 +16,23 @@
  *      calls router.replace("/login") itself when /api/auth/me fails
  *      (src/app/users/page.js). The redirect happens after the shell paints.
  *
- *   3. unguarded - e.g. /invoices, absent from the matcher AND lacking a
- *      client-side guard. The shell renders for a signed-out visitor and the
- *      data merely fails to load.
+ *   3. shell-guarded - e.g. /invoices, absent from the matcher and with no
+ *      guard of its own. The staff shell's workspace provider sends anyone
+ *      whose /api/auth/me answers 401 to /login, clearing the cookie first.
+ *      This was once an unguarded finding; the shell guard closed it.
+ *
+ * The same shell guard covers a cookie that is present but dead (the account
+ * is gone, the database was reset): proxy.js only checks the cookie exists,
+ * so without it a stale cookie showed an empty shell full of 401s.
  *
  * These tests assert that real behaviour rather than an idealised version of
- * it. Tier 3 is reported as a finding, not fixed.
+ * it.
  */
 
 import { test, expect } from "../fixtures/test.ts";
 import { qaEnv } from "../../config/env.ts";
 import { AUTH_COOKIE_NAME } from "../../config/constants.ts";
 import { login, OWNER, submitLoginForm } from "../utils/auth.ts";
-import { waitForAppReady } from "../utils/app-ready.ts";
 
 /** Tier 1: in the proxy.js matcher, redirected server-side. */
 const MIDDLEWARE_GUARDED_PATHS = ["/dashboard", "/leads", "/tasks", "/files", "/jobs"];
@@ -36,8 +40,8 @@ const MIDDLEWARE_GUARDED_PATHS = ["/dashboard", "/leads", "/tasks", "/files", "/
 /** Tier 2: not matched, but the page redirects itself once mounted. */
 const CLIENT_GUARDED_PATHS = ["/users"];
 
-/** Tier 3: no guard at any layer. */
-const UNGUARDED_PATHS = ["/invoices"];
+/** Tier 3: no guard of its own; the staff shell redirects on a 401. */
+const SHELL_GUARDED_PATHS = ["/invoices"];
 
 test.describe("authentication", () => {
   test("criterion 5: a real login through the form succeeds", async ({ freshContext }) => {
@@ -118,26 +122,33 @@ test.describe("authentication", () => {
     });
   }
 
-  for (const openPath of UNGUARDED_PATHS) {
-    test(`tier 3: unauthenticated ${openPath} renders unguarded (FINDING)`, async ({
+  for (const shellPath of SHELL_GUARDED_PATHS) {
+    test(`tier 3: unauthenticated ${shellPath} is sent to login by the shell`, async ({
       freshContext,
     }) => {
       const { page } = await freshContext();
-      await page.goto(openPath);
-      await waitForAppReady(page);
-
-      // FINDING (reported, not fixed): this authenticated route is absent from
-      // the proxy.js matcher AND has no client-side guard, so the app shell
-      // renders for a signed-out visitor while its data fails to load.
-      //
-      // Asserting the real behaviour is deliberate: if the guard is ever
-      // added, this test fails loudly and the path should move up a tier.
-      expect(
-        new URL(page.url()).pathname,
-        `${openPath} has no guard at either layer, so no redirect occurs`,
-      ).toBe(openPath);
+      await page.goto(shellPath);
+      await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
     });
   }
+
+  test("a stale session cookie is cleared and sent to login", async ({ freshContext }) => {
+    const { context, page } = await freshContext();
+    // A cookie the server no longer honours: what a browser keeps after the
+    // account is removed or the database is reset. proxy.js lets it through.
+    await context.addCookies([
+      { name: AUTH_COOKIE_NAME, value: "stale.session.token", url: qaEnv.baseUrl },
+    ]);
+
+    await page.goto("/dashboard");
+    await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+
+    const auth = (await context.cookies(qaEnv.baseUrl)).find(
+      (cookie) => cookie.name === AUTH_COOKIE_NAME,
+    );
+    expect(auth?.value ?? "").toBe("");
+  });
 
   test("an authenticated user visiting /login is sent to the dashboard", async ({ page }) => {
     // This project already carries a session via storageState.
