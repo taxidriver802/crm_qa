@@ -31,11 +31,19 @@ const PHOTO = path.join(qaEnv.qaRoot, "fixtures", "uploads");
 
 async function pickDay(page: Page, scope: ReturnType<Page["locator"]>, day: number) {
   await scope.getByRole("button", { name: "Select date" }).first().click();
-  await page.getByRole("gridcell", { name: String(day), exact: true }).first().click();
+  // The day button's name is the full date ("Tuesday, March 17th, 2026"),
+  // not the numeral on the cell.
+  const ordinal = day === 1 || day === 21 || day === 31 ? "st" : day === 2 || day === 22 ? "nd" : day === 3 || day === 23 ? "rd" : "th";
+  await page.getByRole("button", { name: new RegExp(`\\b${day}${ordinal},`) }).click();
 }
 
 async function copied(page: Page): Promise<string> {
   return page.evaluate(() => navigator.clipboard.readText());
+}
+
+/** The status pill on the job, visible on every tab. The phase bar also says "Closed". */
+async function expectJobStatus(page: Page, status: string) {
+  await expect(page.getByTestId("job-head").locator(".pill").filter({ hasText: status })).toBeVisible();
 }
 
 test.describe("help — Start here, walked", () => {
@@ -112,7 +120,7 @@ test.describe("help — Start here, walked", () => {
     await pickDay(page, work, 18);
     await work.getByRole("button", { name: "Schedule appointment" }).click();
     await expect(work.getByText("Site visit")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Appointment Scheduled", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Appointment Scheduled");
     await expect(next).toContainText("Build the estimate");
 
     // --- 5. A note ---------------------------------------------------------------
@@ -140,10 +148,12 @@ test.describe("help — Start here, walked", () => {
     await page.getByRole("button", { name: "Create estimate" }).click();
     await page.waitForURL(/\/estimates\/\d+/);
     await waitForAppReady(page);
-    await page.getByLabel("Item name").fill("Architectural shingles");
-    await page.getByLabel("Quantity").fill("20");
-    await page.getByLabel("Unit price").fill("250");
     await page.getByRole("button", { name: "Add line" }).click();
+    const line = page.getByTestId("estimate-line-form");
+    await line.getByLabel("Item name").fill("Architectural shingles");
+    await line.getByLabel("Quantity").fill("20");
+    await line.getByLabel("Unit price").fill("250");
+    await line.getByRole("button", { name: "Add line" }).click();
     await expect(page.getByTestId("estimate-total").first()).toContainText("$5,000.00");
     const estimateStep = page.getByTestId("estimate-next-step");
     await expect(estimateStep).toContainText("Send it to the client");
@@ -155,7 +165,7 @@ test.describe("help — Start here, walked", () => {
     expect(estimateLink).toMatch(/\/public\/estimate\//);
     await page.goto(jobUrl);
     await waitForAppReady(page);
-    await expect(page.getByRole("button", { name: "Proposal Sent", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Proposal Sent");
     await expect(next).toContainText("Waiting on the client");
 
     // --- 9. Accept it the way the client does ------------------------------------
@@ -170,7 +180,7 @@ test.describe("help — Start here, walked", () => {
 
     await page.reload();
     await waitForAppReady(page);
-    await expect(page.getByRole("button", { name: "Sold", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Sold");
     await expect(next).toContainText("Request a deposit");
 
     // --- 10. Request the deposit -----------------------------------------------------
@@ -204,7 +214,7 @@ test.describe("help — Start here, walked", () => {
     await expect(work.getByLabel("Set job status to Work Scheduled")).toBeChecked();
     await pickDay(page, work, 23);
     await work.getByRole("button", { name: "Schedule appointment" }).click();
-    await expect(page.getByRole("button", { name: "Work Scheduled", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Work Scheduled");
     await expect(next).toContainText("Start the work");
 
     // --- 13. The portal --------------------------------------------------------------------
@@ -219,9 +229,9 @@ test.describe("help — Start here, walked", () => {
 
     // --- 14. Do the work ------------------------------------------------------------------
     await next.getByRole("button", { name: "Move to In Progress" }).click();
-    await expect(page.getByRole("button", { name: "In Progress", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "In Progress");
     await next.getByRole("button", { name: "Move to Work Complete" }).click();
-    await expect(page.getByRole("button", { name: "Work Complete", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Work Complete");
     await expect(next).toContainText("Send the final invoice");
 
     // --- 15. The final invoice --------------------------------------------------------------
@@ -241,7 +251,7 @@ test.describe("help — Start here, walked", () => {
     await next.getByRole("button", { name: "Record payment" }).click();
     await peek.getByRole("button", { name: "Save payment" }).click();
     await expect(page.getByText("Paid in full. The job is settled and closed.")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Closed", pressed: true })).toBeVisible();
+    await expectJobStatus(page, "Closed");
     await expect(next).toHaveCount(0);
     await page.getByRole("button", { name: "Close preview" }).click();
     await tabs.getByRole("tab", { name: /^Money/ }).click();

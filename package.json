@@ -11,6 +11,7 @@
     "qa:install": "playwright install chromium",
     "qa:guard-check": "node scripts/guard-check.ts",
     "qa:drift-check": "node scripts/lifecycle-drift-check.ts",
+    "qa:help-check": "node scripts/help-source-check.ts",
     "qa:verify-hygiene": "node scripts/verify-hygiene.mjs",
     "qa:db:reset": "node scripts/qa-db.ts reset",
     "qa:db:schema": "node scripts/qa-db.ts schema",
@@ -21,7 +22,7 @@
     "qa:prepare": "node scripts/prepare-frontend.mjs",
     "qa:build": "node scripts/build-frontend.mjs",
     "test:e2e": "playwright test",
-    "test:qa": "npm run qa:guard-check && npm run qa:drift-check && npm run qa:db:setup && npm run qa:prepare && npm run qa:build && npm run test:e2e",
+    "test:qa": "npm run qa:guard-check && npm run qa:drift-check && npm run qa:help-check && npm run qa:db:setup && npm run qa:prepare && npm run qa:build && npm run test:e2e",
     "format": "prettier --write ."
   },
   "devDependencies": {

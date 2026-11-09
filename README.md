@@ -35,8 +35,8 @@ npm run test:qa
 ```
 
 `npm run test:qa` runs the whole pipeline: guard check → lifecycle drift check →
-database reset, schema and seed → staged frontend build → Playwright across all
-four viewports.
+help source check → database reset, schema and seed → staged frontend build →
+Playwright across all four viewports.
 
 ## How isolation works
 
