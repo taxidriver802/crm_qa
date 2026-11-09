@@ -11,9 +11,11 @@
  *
  *   End to end, desktop only — a job created through the API walks the whole
  *   lifecycle in the UI: the client accepts on the public estimate page, the
- *   job moves to Sold by itself, a deposit is billed and paid, the crew moves
- *   it through production, the close gate refuses to close with a draft
- *   invoice, and the final payment closes the job. It creates its own records
+ *   job moves to Sold by itself, and from then on the job's next step drives
+ *   everything with the documents opening beside the job: the deposit is
+ *   billed, sent and paid, the crew moves it through production, the close
+ *   gate refuses to close with a draft invoice, and the final payment closes
+ *   the job. It creates its own records
  *   so the seeded fixtures stay untouched for the other viewports.
  */
 
@@ -29,9 +31,13 @@ async function apiJson(request: APIRequestContext, method: "get" | "post" | "pat
   return body;
 }
 
-/** Job records are tabbed (Overview, Work, Money, Files, Activity); the label carries a count. */
+/** Records are tabbed; the tab label can carry a count. */
+async function openRecordTab(page: Page, list: string, name: string) {
+  await page.getByRole("tablist", { name: list }).getByRole("tab", { name: new RegExp(`^${name}`) }).click();
+}
+
 async function openJobTab(page: Page, name: string) {
-  await page.getByRole("tablist", { name: "Job sections" }).getByRole("tab", { name: new RegExp(`^${name}`) }).click();
+  await openRecordTab(page, "Job sections", name);
 }
 
 async function expectNoOverflow(page: Page, label: string) {
@@ -52,7 +58,7 @@ test.describe("job lifecycle — seeded billing job", () => {
 
     const nextStep = page.getByTestId("job-next-step");
     await expect(nextStep).toContainText("Collect $960.00 balance");
-    await expect(nextStep.getByRole("link", { name: "Record payment" })).toBeVisible();
+    await expect(nextStep.getByRole("button", { name: "Record payment" })).toBeVisible();
 
     await openJobTab(page, "Money");
     await expect(page).toHaveURL(/[?&]tab=money/);
@@ -93,9 +99,10 @@ test.describe("job lifecycle — seeded billing job", () => {
     await expect(page.getByTestId("invoice-balance")).toHaveText("$960.00");
     await expect(page.getByText("Less deposit billed")).toBeVisible();
     await expect(page.getByText("Partially Paid").first()).toBeVisible();
-    await expect(page.getByText("by check #3318")).toBeVisible();
-    // Money is in, so the lines are locked.
-    await expect(page.getByText("Locked: payments are recorded or the invoice is void.")).toBeVisible();
+    await expect(page.getByRole("tabpanel")).toContainText("Check #3318");
+    // Money is in, so the lines are locked, and the page says why.
+    await openRecordTab(page, "Invoice sections", "Line items");
+    await expect(page.getByText("Payments are recorded, so the lines are locked.")).toBeVisible();
     await expect(page.getByRole("button", { name: "New item" })).toHaveCount(0);
 
     await expectNoOverflow(page, "invoice detail");
@@ -209,63 +216,65 @@ test.describe("job lifecycle — end to end", () => {
     // --- nobody touched the job, and it is sold ----------------------------
     await page.goto(`/jobs/${job.id}`);
     await waitForAppReady(page);
+    const next = page.getByTestId("job-next-step");
+    const peek = page.getByTestId("peek-panel");
     await expect(page.getByRole("button", { name: "Sold", pressed: true })).toBeVisible();
-    await expect(page.getByTestId("job-next-step")).toContainText("Request a deposit");
-    // The next step's own button takes you to the Money tab.
-    await page.getByTestId("job-next-step").getByRole("button", { name: "Bill deposit" }).click();
-    await expect(page.getByRole("tab", { name: /^Money/, selected: true })).toBeVisible();
-    await expect(page.getByTestId("money-contract")).toContainText("$5,000.00");
+    await expect(next).toContainText("Request a deposit");
 
-    // --- bill and collect the deposit --------------------------------------
-    await page.getByRole("button", { name: "Request deposit" }).click();
-    await page.getByRole("button", { name: "Create deposit invoice" }).click();
-    await page.waitForURL(/\/invoices\/\d+$/);
-    await waitForAppReady(page);
-    await expect(page.getByTestId("invoice-balance")).toHaveText("$1,500.00");
-    await page.getByRole("button", { name: "Record payment" }).click();
-    await page.getByRole("button", { name: "Save payment" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Paid in full." })).toBeVisible();
+    // --- bill, send and collect the deposit without leaving the job ---------
+    // The next step opens the approved estimate beside the job, deposit form ready.
+    await next.getByRole("button", { name: "Request deposit" }).click();
+    await expect(peek.getByTestId("deposit-form")).toBeVisible();
+    await peek.getByRole("button", { name: "Create deposit invoice" }).click();
+    const invoiceStep = peek.getByTestId("invoice-next-step");
+    await expect(invoiceStep).toContainText("Send it to the client");
+    await expect(peek.getByTestId("invoice-balance")).toHaveText("$1,500.00");
+    // A drafted deposit is not a requested one: the job asks for it to be sent.
+    await expect(next).toContainText("Send the deposit invoice");
+    await invoiceStep.getByRole("button", { name: "Mark sent" }).click();
+    await expect(invoiceStep).toContainText("Collect $1,500.00");
+    await expect(next).toContainText("Schedule the work");
+    await invoiceStep.getByRole("button", { name: "Record payment" }).click();
+    await peek.getByRole("button", { name: "Save payment" }).click();
+    await expect(invoiceStep).toContainText("Paid in full");
+    await page.getByRole("button", { name: "Close preview" }).click();
 
     // --- production --------------------------------------------------------
-    await page.goto(`/jobs/${job.id}`);
-    await waitForAppReady(page);
-    await expect(page.getByTestId("job-next-step")).toContainText("Schedule the work");
-    for (const status of ["Work Scheduled", "In Progress", "Work Complete"]) {
-      await page.getByRole("button", { name: status, exact: true }).click();
-      await expect(page.getByRole("button", { name: status, pressed: true })).toBeVisible();
-    }
-    await expect(page.getByTestId("job-next-step")).toContainText("Send the final invoice");
+    await page.getByRole("button", { name: "Work Scheduled", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Work Scheduled", pressed: true })).toBeVisible();
+    await next.getByRole("button", { name: "Move to In Progress" }).click();
+    await expect(page.getByRole("button", { name: "In Progress", pressed: true })).toBeVisible();
+    await next.getByRole("button", { name: "Move to Work Complete" }).click();
+    await expect(page.getByRole("button", { name: "Work Complete", pressed: true })).toBeVisible();
+    await expect(next).toContainText("Send the final invoice");
 
-    // --- the final invoice subtracts the deposit ---------------------------
-    await page.getByRole("button", { name: "Create final invoice" }).click();
-    await page.waitForURL(/\/invoices\/\d+$/);
-    await waitForAppReady(page);
-    const finalUrl = page.url();
-    await expect(page.getByText("Less deposit billed")).toBeVisible();
-    await expect(page.getByTestId("invoice-balance")).toHaveText("$3,500.00");
+    // --- the final invoice subtracts the deposit and opens beside the job --
+    await next.getByRole("button", { name: "Create final invoice" }).click();
+    await expect(peek.getByText("Less deposit billed")).toBeVisible();
+    await expect(peek.getByTestId("invoice-balance")).toHaveText("$3,500.00");
+    await expect(next).toContainText("Send the draft invoice");
+    await page.getByRole("button", { name: "Close preview" }).click();
 
     // --- the close gate holds while the final is a draft --------------------
-    await page.goto(`/jobs/${job.id}`);
-    await waitForAppReady(page);
     await page.getByRole("button", { name: "Closed", exact: true }).click();
     await expect(page.getByText("This job cannot be closed while money is still open.")).toBeVisible();
     await expect(page.getByText(/draft invoice has not been sent/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Work Complete", pressed: true })).toBeVisible();
 
     // --- send it, get paid, and the job closes itself -----------------------
-    await page.goto(new URL(finalUrl).pathname);
-    await waitForAppReady(page);
-    await page.getByRole("button", { name: "Mark sent" }).click();
-    await expect(page.getByText("Sent", { exact: true }).first()).toBeVisible();
-    await page.getByRole("button", { name: "Record payment" }).click();
-    await page.getByRole("button", { name: "Save payment" }).click();
-    await expect(page.getByText("Paid in full. The job is settled and now closed.")).toBeVisible();
-
-    await page.goto(`/jobs/${job.id}`);
-    await waitForAppReady(page);
+    await next.getByRole("button", { name: /^Send INV-/ }).click();
+    await invoiceStep.getByRole("button", { name: "Mark sent" }).click();
+    await expect(next).toContainText("Collect $3,500.00");
+    await invoiceStep.getByRole("button", { name: "Record payment" }).click();
+    await peek.getByRole("button", { name: "Save payment" }).click();
+    await expect(page.getByText("Paid in full. The job is settled and closed.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Closed", pressed: true })).toBeVisible();
-    await expect(page.getByTestId("job-next-step")).toHaveCount(0);
+    await expect(next).toHaveCount(0);
+    await page.getByRole("button", { name: "Close preview" }).click();
+
     await openJobTab(page, "Money");
+    await expect(page.getByTestId("money-contract")).toContainText("$5,000.00");
     await expect(page.getByTestId("money-balance")).toContainText("$0.00");
+    await expect(page.getByTestId("job-invoices").getByRole("link")).toHaveCount(2);
   });
 });

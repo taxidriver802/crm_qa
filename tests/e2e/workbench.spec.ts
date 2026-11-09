@@ -238,12 +238,12 @@ test.describe("workbench — preferences persist", () => {
   test("Today widgets can be hidden, and stay hidden", async ({ page }) => {
     await page.goto("/dashboard");
     await waitForAppReady(page);
-    await expect(page.getByRole("heading", { name: "Pipeline", level: 2 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Jobs by phase", level: 2 })).toBeVisible();
 
     await page.getByRole("button", { name: "Customize" }).click();
     const customize = page.getByTestId("customize-home");
-    await customize.getByRole("button", { name: "Hide Pipeline" }).click();
-    await expect(page.getByRole("heading", { name: "Pipeline", level: 2 })).toHaveCount(0);
+    await customize.getByRole("button", { name: "Hide Jobs by phase" }).click();
+    await expect(page.getByRole("heading", { name: "Jobs by phase", level: 2 })).toHaveCount(0);
     await customize.getByRole("button", { name: "Done" }).click();
 
     await waitForSaved(page, (prefs) =>
@@ -251,7 +251,7 @@ test.describe("workbench — preferences persist", () => {
     );
     await page.reload();
     await waitForAppReady(page);
-    await expect(page.getByRole("heading", { name: "Pipeline", level: 2 })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Jobs by phase", level: 2 })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Needs you", level: 2 })).toBeVisible();
   });
 

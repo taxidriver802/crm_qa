@@ -147,7 +147,8 @@ tests/
   global-setup.ts   logs in once, saves storageState
   fixtures/         extended test object (+ gitignored .auth/ and manifest)
   utils/            auth, readiness, stabilisation, navigation helpers
-  e2e/              infrastructure, auth, and route smoke specs
+  e2e/              infrastructure, auth, smoke, lifecycle, documents,
+                    access, saved views, workbench, pwa
 fixtures/uploads/   deterministic file-upload fixtures
 qa-artifacts/       generated reports (gitignored)
 .qa-build/          staged frontend copy (gitignored)
@@ -170,17 +171,34 @@ Specs in `tests/e2e/`:
   phase filter, invoice ledger and line lock, dashboard "Owed to you",
   customer portal stage/balance with drafts hidden, and the public invoice
   link, each with an overflow check. On `desktop-1440` only, a mutating flow
-  that creates its own lead/job/estimate through the API and drives client
-  approval → Sold → deposit paid → production → final invoice less deposit →
-  close refused while a draft exists → final payment → job closes itself.
+  that creates its own lead/job/estimate through the API: the client accepts
+  on the public page → Sold, and from there the job's next step drives the
+  rest with each document opening in the peek beside the job: deposit
+  billed, sent and paid → production → final invoice less deposit → close
+  refused while a draft exists → final payment → job closes itself.
   Portal and share tokens are minted per test and never written to the
   manifest.
+- **documents** — the seeded approved estimate reads as billed, locks its
+  lines and opens its invoice in the peek (every viewport); on
+  `desktop-1440`, an estimate made through the API is scoped, sent,
+  approved and billed from its own page, then gets a change order.
+- **access** — the seeded agent at `desktop-1440` and `phone-390`: every
+  seeded record (owner-owned) answers "isn't available" with a way back,
+  owner/admin areas say so, and a job the owner assigns to the agent opens
+  with its next step while the portal link is left to an owner.
+- **saved-views** — filters survive a reload because they live in the URL
+  (every viewport); on `desktop-1440`, a saved view is linked, pinned,
+  opened from the sidebar, left when a filter changes, and deleted with its
+  pin. Preferences are reset before and after.
+- **workbench** — shell chrome per width, Create, peek, record tabs in the
+  URL, preferences that persist across browsers (`desktop-1440`), and the
+  agent's view of nav and settings.
 
 **Tier 1** (`config/routes.ts`): login, dashboard, leads list / detail / new,
 jobs list / detail, tasks, invoices, files, users.
 
-Auth is exercised as the owner. `QA_AGENT_*` is reserved for a later RBAC pass
-and is unused.
+Most specs run as the owner. `QA_AGENT_*` seeds an agent that `access` and
+`workbench` sign in as; without it those tests skip.
 
 Mutation rule: the suite runs serially on one database across four
 projects, so a spec that changes data must either touch only data it created
@@ -189,17 +207,18 @@ project. Seeded records stay as seeded for every viewport.
 
 ## What is not tested
 
-**Tier 2** is catalogued in `config/routes.ts` but has no specs yet: remaining
-new/edit forms, task / invoice / estimate details, reports, automation,
-integrations, public portal and public estimate.
+**Tier 2** is catalogued in `config/routes.ts`. Estimate and invoice records,
+the public portal and public estimate are now covered by `job-lifecycle` and
+`documents`; still without specs: remaining new/edit forms, task details,
+reports, automation and integrations for an owner.
 
 Frontend routes not even in that catalog today: `/estimates/templates`,
 `/public/intake/[token]`. (`/public/invoice/[token]` is catalogued and covered
 by `job-lifecycle`.)
 
 Possible later work, not scheduled here: accessibility, visual regression,
-Lighthouse, CI, agent-role coverage, feature-level flows (create lead, send
-estimate, …). Breadth-over-depth is intentional — this suite proves the
+Lighthouse, CI, deeper agent-role coverage, more feature-level flows (create
+lead, tasks, files, …). Breadth-over-depth is intentional — this suite proves the
 harness can reach and render the app.
 
 ## Viewports
