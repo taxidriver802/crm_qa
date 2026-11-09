@@ -20,7 +20,7 @@ import {
   truncateAll,
   withQaClient,
 } from "../db/admin.ts";
-import { applySchema, verifyNoSchemaDrift } from "../db/schema.ts";
+import { applySchema, verifySchemaSource } from "../db/schema.ts";
 import { seed } from "../db/seed.ts";
 import { TRUNCATE_TABLES } from "../db/admin.ts";
 
@@ -81,7 +81,7 @@ async function main(): Promise<void> {
     }
 
     case "setup": {
-      verifyNoSchemaDrift();
+      verifySchemaSource();
       await resetDatabase(target);
       await applySchema();
       const manifest = await seed();

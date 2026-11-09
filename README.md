@@ -62,7 +62,7 @@ asserts this by comparing `BUILD_ID`s.
 
 | Concern | Owner |
 | --- | --- |
-| Schema SQL | `crm_backend/sql/` — this harness applies those files in the same order as `crm_backend/test/helpers/setup.ts`. `verifyNoSchemaDrift()` fails if a new patch file appears and is not listed. |
+| Schema SQL | `crm_backend/sql/` — this harness calls the backend's own runner (`crm_backend/scripts/lib/migrations.js`, the code behind `npm run db:migrate`): the baseline `schema.sql`, then each file in `sql/migrations/`. No file list is kept here. |
 | Seed data | **This repo** (`db/seed-data.ts`), not `db:seed-demo` / `db:seed-walkthrough`. Fixture binaries in `fixtures/uploads/` are copied into `crm_backend/uploads/`. |
 | Frontend build | Staged copy of `crm_frontend`; env `NEXT_PUBLIC_API_BASE_URL=/api` and `API_INTERNAL_BASE_URL` pointing at the QA backend. |
 | API tests | Stay in `crm_backend` (`npm test`). |

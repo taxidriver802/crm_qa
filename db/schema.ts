@@ -1,108 +1,55 @@
 /**
  * Applies the backend's own schema to the QA database.
  *
- * The backend is not migration-managed: the canonical apply order lives only in
- * crm_backend/test/helpers/setup.ts and is NOT alphabetical (phase12_invoicing
- * must precede phase13_automation). Rather than reimplement the schema, this
- * module reads the backend's real .sql files in that exact order, so the
- * backend repo stays the single owner of schema definition.
+ * The backend owns the schema and the only code that applies it:
+ * crm_backend/scripts/lib/migrations.js, the runner behind
+ * `npm run db:migrate` and the backend's Jest setup. This module loads that
+ * runner and hands it a client connected to the guarded QA target, so QA
+ * builds its database exactly the way every other database is built: the
+ * baseline (sql/schema.sql), then each file in sql/migrations/ in order.
  *
- * DRIFT GUARD: because the order is duplicated here, a future patch file added
- * to the backend would otherwise be silently skipped. verifyNoSchemaDrift()
- * compares the directory against SCHEMA_FILES and fails loudly instead.
+ * There is no list of files here to keep in step with the backend.
  */
 
 import fs from "node:fs";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { qaEnv } from "../config/env.ts";
 import { assertSafeQaTarget, currentTarget, withQaClient } from "./admin.ts";
 
-/**
- * Canonical apply order, transcribed from crm_backend/test/helpers/setup.ts.
- * Do not sort this list.
- */
-export const SCHEMA_FILES = Object.freeze([
-  "schema.sql",
-  "patch_notifications_constraints.sql",
-  "patch_phase9.sql",
-  "patch_phase10_notes.sql",
-  "patch_phase12_team_visibility.sql",
-  "patch_phase12_saved_views.sql",
-  "patch_phase12_invoicing.sql",
-  "patch_phase13_automation.sql",
-  "patch_phase13_portal.sql",
-  "patch_phase14_events.sql",
-  "patch_phase15_status_aging.sql",
-  "patch_phase16_communication.sql",
-  "patch_phase17_quotes_photos.sql",
-  "patch_phase18_acquisition_portal.sql",
-  "patch_phase19_appointments_workload.sql",
-  "patch_phase20_companies.sql",
-  "patch_phase21_company_branding.sql",
-  "patch_assignment_notifications.sql",
-  "patch_phase22_performance_history.sql",
-  "patch_phase23_job_lifecycle_money.sql",
-  "patch_phase24_workspace_preferences.sql",
-]);
+type Runner = {
+  migrate: (client: unknown, options?: { log?: (line: string) => void }) => Promise<string[]>;
+  listMigrations: () => string[];
+};
 
-function sqlDir(): string {
-  const dir = path.join(qaEnv.backendPath, "sql");
-  if (!fs.existsSync(dir)) {
-    throw new Error(`Backend sql directory not found: ${dir}`);
+function loadRunner(): Runner {
+  const file = path.join(qaEnv.backendPath, "scripts", "lib", "migrations.js");
+  if (!fs.existsSync(file)) {
+    throw new Error(
+      `The backend's migration runner was not found at ${file}. ` +
+        `crm_qa needs a crm_backend checkout with scripts/lib/migrations.js.`,
+    );
   }
-  return dir;
+  return createRequire(import.meta.url)(file) as Runner;
 }
 
 /**
- * Fails if the backend's sql directory contains a file this harness does not
- * know how to order, or is missing one it expects.
+ * Fails early, before any database work, if the backend's schema cannot be
+ * applied: the runner is missing or a migration file is misnamed.
  */
-export function verifyNoSchemaDrift(): void {
-  const dir = sqlDir();
-  const onDisk = fs
-    .readdirSync(dir)
-    .filter((name) => name.endsWith(".sql"))
-    .sort();
-
-  const known = new Set<string>(SCHEMA_FILES);
-  const unknown = onDisk.filter((name) => !known.has(name));
-  const missing = SCHEMA_FILES.filter((name) => !onDisk.includes(name));
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Schema files listed in SCHEMA_FILES are missing from ${dir}:\n` +
-        missing.map((name) => `  - ${name}`).join("\n"),
-    );
-  }
-
-  if (unknown.length > 0) {
-    throw new Error(
-      `SCHEMA DRIFT DETECTED.\n\n` +
-        `${dir} contains SQL files the QA harness does not know about:\n` +
-        unknown.map((name) => `  - ${name}`).join("\n") +
-        `\n\nThe backend's canonical apply order is defined in ` +
-        `crm_backend/test/helpers/setup.ts. Add the new file(s) to ` +
-        `SCHEMA_FILES in crm_qa/db/schema.ts IN THE CORRECT ORDER ` +
-        `(order matters - it is not alphabetical), then re-run.\n`,
-    );
-  }
-
+export function verifySchemaSource(): void {
+  const runner = loadRunner();
+  const migrations = runner.listMigrations();
   console.log(
-    `[qa-schema] drift check passed: ${onDisk.length} sql file(s) all accounted for`,
+    `[qa-schema] backend runner found: baseline + ${migrations.length} migration(s)`,
   );
 }
 
-/**
- * Applies schema.sql plus every patch, in canonical order, inside a single
- * transaction. All statements are idempotent (CREATE ... IF NOT EXISTS), so
- * this is safe to re-run, though a reset is the normal path.
- */
+/** Brings the QA database up to date with the backend's runner. */
 export async function applySchema(): Promise<void> {
   const target = currentTarget();
   assertSafeQaTarget(target);
-  verifyNoSchemaDrift();
-
-  const dir = sqlDir();
+  const runner = loadRunner();
 
   await withQaClient(async (client) => {
     const connected = await client.query<{ current_database: string }>(
@@ -114,20 +61,15 @@ export async function applySchema(): Promise<void> {
         `Refusing to apply schema: connected to "${dbName}", expected "${target.dbName}".`,
       );
     }
-    console.log(`[qa-schema] applying ${SCHEMA_FILES.length} file(s) to ${dbName}`);
 
-    await client.query("BEGIN");
-    try {
-      for (const fileName of SCHEMA_FILES) {
-        const sql = fs.readFileSync(path.join(dir, fileName), "utf8");
-        await client.query(sql);
-        console.log(`[qa-schema]   applied ${fileName}`);
-      }
-      await client.query("COMMIT");
-    } catch (error) {
-      await client.query("ROLLBACK");
-      throw error;
-    }
+    const applied = await runner.migrate(client, {
+      log: (line) => console.log(`[qa-schema]   ${line}`),
+    });
+    console.log(
+      applied.length
+        ? `[qa-schema] applied ${applied.join(", ")} to ${dbName}`
+        : `[qa-schema] ${dbName} was already up to date`,
+    );
 
     const tables = await client.query<{ count: string }>(
       `SELECT count(*)::text AS count FROM information_schema.tables
