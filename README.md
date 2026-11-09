@@ -34,8 +34,9 @@ npm run qa:install                 # one-time Playwright browser download
 npm run test:qa
 ```
 
-`npm run test:qa` runs the whole pipeline: guard check → database reset, schema
-and seed → staged frontend build → Playwright across all four viewports.
+`npm run test:qa` runs the whole pipeline: guard check → lifecycle drift check →
+database reset, schema and seed → staged frontend build → Playwright across all
+four viewports.
 
 ## How isolation works
 
@@ -88,6 +89,16 @@ developer `crm_dev` URL is never read. SMTP is left unconfigured.
 `crm_dev`, SQL injection in the name, and a name/URL mismatch — and fails if
 any is accepted. It runs first in `test:qa`, before any database work.
 
+## Lifecycle drift check
+
+The backend owns the job lifecycle and the money vocabulary; the frontend
+mirrors the names it shows. There is no shared package, so
+`npm run qa:drift-check` reads both repos' source and fails when they
+disagree: job statuses and their order, which statuses sit in which phase,
+status tones for jobs, estimates and invoices, invoice kinds, payment methods,
+and a control on the job for every next-step action the backend can return.
+It runs second in `test:qa`, still before any database work.
+
 ## Determinism
 
 Seeded timestamps, relative labels, and theme chrome are pinned so a later
@@ -115,6 +126,7 @@ content: the digests match.
 | `npm run test:qa` | Full pipeline: guards, database, build, tests |
 | `npm run test:e2e` | Tests only, against the existing database and build |
 | `npm run qa:guard-check` | Prove the destructive guards reject unsafe targets |
+| `npm run qa:drift-check` | Compare backend and frontend lifecycle vocabulary |
 | `npm run qa:db:setup` | Drop, recreate, apply schema, seed |
 | `npm run qa:db:reseed` | Truncate and reseed (fast inner loop) |
 | `npm run qa:db:verify` | Report row counts; makes no writes |
@@ -130,7 +142,7 @@ Useful Playwright flags: `--project=phone-390` for a single viewport,
 ```
 config/      env, constants, viewport matrix, route registry
 db/          guards, schema application, deterministic seed, manifest
-scripts/     database CLI, frontend staging/build, guard + hygiene checks
+scripts/     database CLI, frontend staging/build, guard, drift + hygiene checks
 tests/
   global-setup.ts   logs in once, saves storageState
   fixtures/         extended test object (+ gitignored .auth/ and manifest)
