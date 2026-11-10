@@ -20,6 +20,7 @@ import { assertSafeQaTarget, currentTarget, withQaClient } from "./admin.ts";
 type Runner = {
   migrate: (client: unknown, options?: { log?: (line: string) => void }) => Promise<string[]>;
   listMigrations: () => string[];
+  startingRowsSql: () => string;
 };
 
 function loadRunner(): Runner {
@@ -43,6 +44,16 @@ export function verifySchemaSource(): void {
   console.log(
     `[qa-schema] backend runner found: baseline + ${migrations.length} migration(s)`,
   );
+}
+
+/**
+ * The baseline's starting rows: Rooftop Realty (with its built-in logo) and
+ * its five estimate templates. A migrated database no longer keeps them
+ * while nobody uses them (backend migration 0002), so the QA seed puts them
+ * back as the QA company, exactly as the backend defines them.
+ */
+export function rooftopStartingRowsSql(): string {
+  return loadRunner().startingRowsSql();
 }
 
 /** Brings the QA database up to date with the backend's runner. */

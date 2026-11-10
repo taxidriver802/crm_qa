@@ -17,6 +17,7 @@ import { anchorPlusDays, nowPlusDays, QA_SEED_ANCHOR, QA_NOW } from "../config/c
 import { qaEnv } from "../config/env.ts";
 import { withQaClient } from "./admin.ts";
 import { writeManifest, type SeedManifest } from "./manifest.ts";
+import { rooftopStartingRowsSql } from "./schema.ts";
 import {
   ACTIVITY,
   AUTOMATION_RULES,
@@ -58,6 +59,27 @@ function milestonesFor(status: string, createdDayOffset: number) {
         : null,
     closed_at: status === "Closed" ? anchorPlusDays(createdDayOffset + 10) : null,
     lost_at: status === "Lost" ? anchorPlusDays(createdDayOffset + 5) : null,
+  };
+}
+
+/**
+ * Every fixture row names its company: company_id has no default (backend
+ * migration 0002), so an insert without it fails. Writes go through this,
+ * with $company in the SQL, which becomes the next numbered parameter; an
+ * INSERT that does not name company_id is refused before it is sent.
+ */
+function companyScoped(client: pg.Client, companyId: string) {
+  return {
+    query<R extends pg.QueryResultRow = pg.QueryResultRow>(sql: string, params: unknown[] = []) {
+      if (/^\s*INSERT\b/i.test(sql) && !/\bcompany_id\b/.test(sql)) {
+        throw new Error(`QA seed insert does not name its company: ${sql.trim().split("\n")[0]}`);
+      }
+      if (!sql.includes("$company")) return client.query<R>(sql, params);
+      return client.query<R>(sql.split("$company").join(`$${params.length + 1}`), [
+        ...params,
+        companyId,
+      ]);
+    },
   };
 }
 
@@ -112,14 +134,22 @@ async function insertAll(
   agentHash: string | null,
 ): Promise<SeedManifest> {
   // --- company ------------------------------------------------------------
-  // Schema backfill already inserts this id. Seed it explicitly so users
-  // land on a known tenant even if the default row was truncated.
-  await client.query(
-    `INSERT INTO companies (id, name, slug, palette_id)
-     VALUES ($1, 'Rooftop Realty', 'rooftop', 'rooftop')
-     ON CONFLICT (id) DO NOTHING`,
+  // A new database has no company (backend migration 0002). The QA company
+  // is Rooftop Realty exactly as the backend's baseline defines it: name,
+  // built-in logo and estimate templates. A reseed (truncate, then seed)
+  // keeps companies, so it is added only when missing.
+  const existing = await client.query(`SELECT 1 FROM companies WHERE id = $1`, [QA_COMPANY_ID]);
+  if (existing.rowCount === 0) {
+    await client.query(rooftopStartingRowsSql());
+  }
+  const company = await client.query<{ slug: string }>(
+    `SELECT slug FROM companies WHERE id = $1`,
     [QA_COMPANY_ID],
   );
+  if (company.rows[0]?.slug !== "rooftop") {
+    throw new Error(`The baseline's starting rows did not create the QA company ${QA_COMPANY_ID}.`);
+  }
+  const db = companyScoped(client, QA_COMPANY_ID);
 
   // --- users --------------------------------------------------------------
   // Fixed UUIDs, so every downstream foreign key is stable run to run.
@@ -161,11 +191,11 @@ async function insertAll(
   const leadIds: Record<string, number> = {};
   for (const lead of LEADS) {
     const at = anchorPlusDays(lead.createdDayOffset);
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO leads
-         (user_id, assigned_to, first_name, last_name, email, phone, source,
+         (company_id, user_id, assigned_to, first_name, last_name, email, phone, source,
           status, budget_min, budget_max, notes, created_at, updated_at)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
+       VALUES ($company, $1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -190,11 +220,11 @@ async function insertAll(
   for (const job of JOBS) {
     const at = anchorPlusDays(job.createdDayOffset);
     const milestones = milestonesFor(job.status, job.createdDayOffset);
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO jobs
-         (user_id, assigned_to, lead_id, title, description, status, address,
+         (company_id, user_id, assigned_to, lead_id, title, description, status, address,
           created_at, updated_at, sold_at, work_completed_at, closed_at, lost_at)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11)
+       VALUES ($company, $1, $1, $2, $3, $4, $5, $6, $7, $7, $8, $9, $10, $11)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -226,11 +256,11 @@ async function insertAll(
     }
     const at = anchorPlusDays(task.status === "Completed" ? 5 : 3);
     const due = task.dueDayOffsetFromNow === null ? null : nowPlusDays(task.dueDayOffsetFromNow);
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO tasks
-         (user_id, assigned_to, lead_id, job_id, title, description, due_date,
+         (company_id, user_id, assigned_to, lead_id, job_id, title, description, due_date,
           status, created_at, updated_at)
-       VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $8)
+       VALUES ($company, $1, $1, $2, $3, $4, $5, $6, $7, $8, $8)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -258,12 +288,12 @@ async function insertAll(
     const grand = round2(taxable + tax);
     const at = anchorPlusDays(estimate.createdDayOffset);
 
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO estimates
-         (user_id, job_id, title, status, subtotal, tax_total, discount_total,
+         (company_id, user_id, job_id, title, status, subtotal, tax_total, discount_total,
           grand_total, notes, client_responded_at, client_response_note,
           created_at, updated_at, approved_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
+       VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12, $13)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -290,11 +320,11 @@ async function insertAll(
 
     let sortOrder = 0;
     for (const line of estimate.lines) {
-      await client.query(
+      await db.query(
         `INSERT INTO estimate_line_items
-           (estimate_id, name, description, quantity, unit_price, line_total,
+           (company_id, estimate_id, name, description, quantity, unit_price, line_total,
             sort_order, source, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
+         VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8, $9, $9)`,
         [
           estimateId,
           line.name,
@@ -339,12 +369,12 @@ async function insertAll(
       );
     }
 
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO invoices
-         (user_id, job_id, estimate_id, invoice_number, status, subtotal,
+         (company_id, user_id, job_id, estimate_id, invoice_number, status, subtotal,
           tax_total, discount_total, grand_total, due_date, paid_at, notes,
           created_at, updated_at, kind, prior_billed_total, amount_paid, sent_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13,
+       VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $13,
                $14, $15, $16, $17)
        RETURNING id`,
       [
@@ -374,7 +404,7 @@ async function insertAll(
     invoiceGrand[invoice.key] = grand;
 
     for (const payment of payments) {
-      await client.query(
+      await db.query(
         `INSERT INTO invoice_payments
            (company_id, invoice_id, job_id, recorded_by_user_id, amount, method,
             reference, received_at, created_at)
@@ -395,11 +425,11 @@ async function insertAll(
 
     let sortOrder = 0;
     for (const line of invoice.lines) {
-      await client.query(
+      await db.query(
         `INSERT INTO invoice_line_items
-           (invoice_id, name, description, quantity, unit_price, line_total,
+           (company_id, invoice_id, name, description, quantity, unit_price, line_total,
             sort_order, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)`,
+         VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8, $8)`,
         [
           invoiceId,
           line.name,
@@ -423,10 +453,10 @@ async function insertAll(
   for (const measurement of MEASUREMENTS) {
     const order = measurementOrder[measurement.jobKey] ?? 0;
     measurementOrder[measurement.jobKey] = order + 1;
-    await client.query(
+    await db.query(
       `INSERT INTO job_measurements
-         (job_id, label, value, unit, sort_order, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+         (company_id, job_id, label, value, unit, sort_order, created_at, updated_at)
+       VALUES ($company, $1, $2, $3, $4, $5, $6, $6)`,
       [
         jobIds[measurement.jobKey],
         measurement.label,
@@ -444,9 +474,9 @@ async function insertAll(
     const entityId =
       note.entityType === "lead" ? leadIds[note.entityKey] : jobIds[note.entityKey];
     const at = anchorPlusDays(note.createdDayOffset);
-    await client.query(
-      `INSERT INTO notes (user_id, entity_type, entity_id, body, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $5)`,
+    await db.query(
+      `INSERT INTO notes (company_id, user_id, entity_type, entity_id, body, created_at, updated_at)
+       VALUES ($company, $1, $2, $3, $4, $5, $5)`,
       [QA_OWNER_ID, note.entityType, entityId, note.body, at],
     );
   }
@@ -454,9 +484,9 @@ async function insertAll(
 
   // --- job activity -------------------------------------------------------
   for (const entry of ACTIVITY) {
-    await client.query(
-      `INSERT INTO job_activity (user_id, job_id, type, title, message, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+    await db.query(
+      `INSERT INTO job_activity (company_id, user_id, job_id, type, title, message, created_at)
+       VALUES ($company, $1, $2, $3, $4, $5, $6)`,
       [
         QA_OWNER_ID,
         jobIds[entry.jobKey],
@@ -474,11 +504,11 @@ async function insertAll(
   const fixtureDir = path.join(qaEnv.qaRoot, "fixtures", "uploads");
   for (const file of FILES) {
     const sizeBytes = fs.statSync(path.join(fixtureDir, file.fixture)).size;
-    const result = await client.query<{ id: number }>(
+    const result = await db.query<{ id: number }>(
       `INSERT INTO files
-         (uploaded_by_user_id, original_name, storage_key, mime_type,
+         (company_id, uploaded_by_user_id, original_name, storage_key, mime_type,
           size_bytes, lead_id, job_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING id`,
       [
         QA_OWNER_ID,
@@ -510,11 +540,11 @@ async function insertAll(
       notification.entityKind && notification.entityKey
         ? entityLookup[notification.entityKind][notification.entityKey]
         : null;
-    await client.query(
+    await db.query(
       `INSERT INTO notifications
-         (user_id, type, title, message, entity_type, entity_id, read_at,
+         (company_id, user_id, type, title, message, entity_type, entity_id, read_at,
           dedupe_key, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+       VALUES ($company, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         QA_OWNER_ID,
         notification.type,
@@ -535,9 +565,9 @@ async function insertAll(
 
   // --- saved views --------------------------------------------------------
   for (const view of SAVED_VIEWS) {
-    await client.query(
-      `INSERT INTO saved_views (user_id, entity_type, name, filters, created_at, updated_at)
-       VALUES ($1, $2, $3, $4::jsonb, $5, $5)`,
+    await db.query(
+      `INSERT INTO saved_views (company_id, user_id, entity_type, name, filters, created_at, updated_at)
+       VALUES ($company, $1, $2, $3, $4::jsonb, $5, $5)`,
       [QA_OWNER_ID, view.entity_type, view.name, JSON.stringify(view.filters), anchorPlusDays(24)],
     );
   }
@@ -545,11 +575,11 @@ async function insertAll(
 
   // --- automation rules ---------------------------------------------------
   for (const rule of AUTOMATION_RULES) {
-    await client.query(
+    await db.query(
       `INSERT INTO automation_rules
-         (user_id, name, description, trigger_event, conditions, action_type,
+         (company_id, user_id, name, description, trigger_event, conditions, action_type,
           action_config, enabled, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9, $9)`,
+       VALUES ($company, $1, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8, $9, $9)`,
       [
         QA_OWNER_ID,
         rule.name,

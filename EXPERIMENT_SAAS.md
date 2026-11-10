@@ -30,6 +30,26 @@ ticked in the plan's **5. Sequence** checklist.
   directory.
 - The full suite passes on the step 2 backend.
 
+## Step 3 (`experiment/CC_tenancy`)
+
+- `db/seed.ts`: every fixture insert names its company. `company_id` has
+  no default now (backend migration 0002), so writes go through a small
+  wrapper that refuses an INSERT without it. A new database has no
+  company, so the seed puts Rooftop Realty back from the backend's own
+  baseline starting rows (`db/schema.ts` `rooftopStartingRowsSql()`) and
+  checks its slug.
+- `tests/e2e/tenancy.spec.ts` (desktop-1440 and phone-390): a company
+  registered beside Rooftop sees its own lead, job and invoice and none of
+  Rooftop's records in the lists or in search. Rooftop's record URLs read
+  "isn’t available", like an id nobody has. Its first invoice is INV-0001
+  (Rooftop's seed ends at INV-1005). Rooftop's owner can't find or open
+  what it made. It registers one company per width, because registration
+  is limited to 10 an hour per address. The limiter is in memory, so the
+  count starts again with each run's backend, and a run registers about
+  seven.
+- The full suite passes on the step 3 backend: 292 passed, 96 skipped at
+  other widths, none failed.
+
 ## Where the plan reaches this repo
 
 | Prospect | What it would touch here |
