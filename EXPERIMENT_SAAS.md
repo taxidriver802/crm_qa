@@ -4,8 +4,20 @@ Branch cut from `experiment/CC_final` at `20e0f9940b48`. The plan, ranking
 the work that makes Joist hostable, is
 `crm_backend/docs/EXPERIMENT_SAAS.md`.
 
-**This repository's product code and tests did not change.** This file is
-the only change on the branch.
+On `experiment/CC_saas_plan` this file is the only change. Progress is
+ticked in the plan's **5. Sequence** checklist.
+
+## Step 1 (`experiment/CC_public_host`)
+
+- `tests/e2e/public-host.spec.ts` (desktop-1440 only): pages carry
+  `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `nosniff` and the
+  referrer policy; `/api/health` comes through the rewrite with helmet's
+  headers and `"database": "ok"`; the public logo is served with a
+  `sandbox` CSP.
+- No other spec changed. The full suite passes with the new rate limits
+  (287 passed): QA registers about five companies and fails about four
+  sign-ins per run, well under the limits, and successful sign-ins are
+  never counted.
 
 ## Where the plan reaches this repo
 
