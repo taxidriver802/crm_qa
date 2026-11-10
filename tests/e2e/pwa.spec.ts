@@ -67,7 +67,8 @@ test.describe("PWA", () => {
       "/icons/icon-192.png",
       "/icons/icon-512.png",
       "/icons/icon-512-maskable.png",
-      "/icons/apple-touch-icon.png",
+      // The Apple icon is the app/apple-icon.png file convention now.
+      "/apple-icon.png",
     ]) {
       const icon = await page.request.get(href);
       expect(icon.ok(), href).toBeTruthy();
@@ -129,7 +130,7 @@ test.describe("PWA", () => {
     });
   });
 
-  test("offline reload shows the branded shell", async ({
+  test("offline reload shows the Joist-branded shell", async ({
     page,
     viewportInfo,
   }) => {
@@ -143,5 +144,9 @@ test.describe("PWA", () => {
       page.getByRole("heading", { name: "Can't reach the CRM" }),
     ).toBeVisible();
     await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    // The cached page carries Joist: its inline mark and its name.
+    await expect(page.locator(".brand svg.mark .joist-flange")).toHaveCount(1);
+    await expect(page.locator(".brand")).toHaveText("Joist");
+    await expect(page).toHaveTitle("Can't reach the CRM · Joist");
   });
 });
