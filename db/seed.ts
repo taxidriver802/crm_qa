@@ -285,6 +285,18 @@ async function insertAll(
   }
   console.log(`[qa-seed] estimates: ${Object.keys(estimateIds).length}`);
 
+  // The approved Brooks estimate is the job contract. Later payments
+  // are measured against it.
+  if (estimateIds["brooks-final"] && jobIds["brooks-tearoff"]) {
+    await client.query(
+      `UPDATE jobs
+       SET contract_estimate_id = $1,
+           contracted_at = $2
+       WHERE id = $3`,
+      [estimateIds["brooks-final"], anchorPlusDays(14), jobIds["brooks-tearoff"]],
+    );
+  }
+
   // --- invoices and line items --------------------------------------------
   const invoiceIds: Record<string, number> = {};
   for (const invoice of INVOICES) {
@@ -323,6 +335,25 @@ async function insertAll(
     );
     const invoiceId = result.rows[0].id;
     invoiceIds[invoice.key] = invoiceId;
+
+    if (invoice.status === "Paid" && grand > 0) {
+      await client.query(
+        `INSERT INTO payments
+           (company_id, user_id, job_id, invoice_id, amount, method, note, received_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'check', $6, $7, $7)`,
+        [
+          QA_COMPANY_ID,
+          QA_OWNER_ID,
+          jobIds[invoice.jobKey],
+          invoiceId,
+          grand,
+          invoice.notes,
+          invoice.paidDayOffsetFromNow === undefined
+            ? at
+            : nowPlusDays(invoice.paidDayOffsetFromNow),
+        ],
+      );
+    }
 
     let sortOrder = 0;
     for (const line of invoice.lines) {
