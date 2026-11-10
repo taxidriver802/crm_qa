@@ -4,7 +4,7 @@
  * The shell renders different chrome by width (crm_frontend/src/components/app-shell.js):
  *   >= lg (1024px) : desktop sidebar, id="desktop-sidebar"
  *   <  lg          : header hamburger (aria-label "Open menu"/"Close menu")
- *                    plus a bottom nav with Home / Leads / Jobs / Tasks / Reports
+ *                    plus a bottom nav with Today / Leads / Jobs / Schedule / Money
  *
  * Selectors here use the accessible names and the one stable id the app
  * already provides. Nothing is added to the application.
@@ -27,9 +27,9 @@ export function mobileMenu(page: Page) {
   return page.locator(".mobile-menu");
 }
 
-/** The bottom tab bar, identified by its Home tab. */
+/** The bottom tab bar, identified by its Today tab. */
 export function bottomNav(page: Page) {
-  return page.locator("nav").filter({ has: page.getByRole("link", { name: "Home" }) });
+  return page.locator("nav").filter({ has: page.getByRole("link", { name: "Today" }) });
 }
 
 export function notificationsButton(page: Page) {

@@ -35,6 +35,7 @@ test.describe("contract money", () => {
     manifest,
   }) => {
     await page.goto(`/jobs/${manifest.jobs["brooks-tearoff"]}`);
+    await page.getByRole("tab", { name: "Money" }).click();
     const money = page.locator("#section-money");
     await expect(money).toBeVisible();
     await expect(money.locator("[data-money='contract']")).toHaveText("$21,553.38");
@@ -74,6 +75,7 @@ test.describe("contract money", () => {
 
     try {
       await page.goto(`/jobs/${jobId}`);
+      await page.getByRole("tab", { name: "Money" }).click();
       const money = page.locator("#section-money");
       await expect(money.locator("[data-money='contract']")).toHaveText("$1,000.00");
 
