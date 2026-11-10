@@ -19,6 +19,17 @@ ticked in the plan's **5. Sequence** checklist.
   sign-ins per run, well under the limits, and successful sign-ins are
   never counted.
 
+## Step 2 (`experiment/CC_backups`)
+
+- No change here. The restore drill took its backup from `crm_qa` (a
+  read-only `pg_dump`) because it is seeded with real job photos, and
+  restored it into `joist_restore_check`, never into `crm_qa`.
+- The backend's Jest suite no longer empties `crm_backend/uploads/`
+  (it uses a temporary `UPLOADS_DIR`), so the QA photo fixtures there now
+  stay between runs. QA still seeds them into the default uploads
+  directory.
+- The full suite passes on the step 2 backend.
+
 ## Where the plan reaches this repo
 
 | Prospect | What it would touch here |
