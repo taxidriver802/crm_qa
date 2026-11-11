@@ -50,6 +50,27 @@ ticked in the plan's **5. Sequence** checklist.
 - The full suite passes on the step 3 backend: 292 passed, 96 skipped at
   other widths, none failed.
 
+## Step 4 (`experiment/CC_way_back_in`)
+
+- `tests/e2e/accounts.spec.ts`. QA has no SMTP, so it drives the
+  copied-link path. Each test invites its own agent through the owner's
+  API session, and none touches the owner's shared session:
+  - Forgot password (1440 and 390) says this Joist can't send email and
+    to ask an owner or admin.
+  - An owner makes a reset link from the Users page (1440). Using it on a
+    new browser sets the password and signs in. The person's earlier
+    browser and API sessions get 401, the old password fails, Account
+    history shows the reset, and the link then reads "already been used".
+  - Preferences (1440 and 390): a wrong current password is refused;
+    Change password signs out the other device and keeps this one; "Sign
+    out everywhere else" ends a later sign-in.
+  - Log out (1440): a copy of the cookie taken before signing out gets
+    401, while the person's other session still works.
+- Backend migration 0003 ends every older sign-in. Global setup signs in
+  fresh on each run, so nothing else changed.
+- The full suite passes on the step 4 backend and frontend: 298 passed,
+  106 skipped at other widths, none failed.
+
 ## Where the plan reaches this repo
 
 | Prospect | What it would touch here |
